@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dægradvöl</title>
+<meta name="description" content="Every day of a life, 14 Feb 1996 to 13 Feb 2077.">
+<meta name="theme-color" content="#1a1a18" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f4ef" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{--bg:#f5f4ef;--card:#ebe9e1;--fg:#1f1e1c;--fg2:#5f5e5a;--fg3:#888780;--line:rgba(0,0,0,.1);--future:rgba(136,135,128,.2);--lived:#888780}
+@media (prefers-color-scheme:dark){:root{--bg:#1a1a18;--card:#262624;--fg:#f1efe8;--fg2:#b4b2a9;--fg3:#888780;--line:rgba(255,255,255,.1);--future:rgba(136,135,128,.22);--lived:#888780}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+main{max-width:560px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+h1{font-size:22px;font-weight:500;margin:0 0 2px}
+.sub{font-size:13px;color:var(--fg3);margin:0 0 16px}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
+.card{background:var(--card);border-radius:10px;padding:12px}
+.lab{font-size:13px;color:var(--fg2)}
+.big{font-size:26px;font-weight:500;font-variant-numeric:tabular-nums}
+.small{font-size:12px;color:var(--fg3);font-variant-numeric:tabular-nums}
+.clock{font-size:13px;color:var(--fg2);font-variant-numeric:tabular-nums;margin:0 0 14px}
+.bar{height:6px;border-radius:3px;background:var(--future);overflow:hidden;margin:6px 0 2px}
+.bar>div{height:100%;background:var(--lived)}
+#tap{font-size:13px;color:var(--fg2);min-height:20px;margin:6px 0}
+canvas{width:100%;height:auto;display:block;touch-action:manipulation}
+.lg{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0 6px;font-size:12px;color:var(--fg2)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+h2{font-size:15px;font-weight:500;margin:22px 0 4px}
+.note{font-size:12px;color:var(--fg3);margin:4px 0 0;line-height:1.5}
+.row{display:flex;gap:10px;padding:8px 0;border-bottom:.5px solid var(--line);font-size:14px;line-height:1.4}
+.dn{min-width:54px;font-weight:500;font-size:13px;font-variant-numeric:tabular-nums}
+.dt{color:var(--fg3);font-size:12px;min-width:80px}
+.past{opacity:.55}
+</style>
+</head>
+<body>
+<main>
+<h1>Dægradvöl</h1>
+<p class="sub">14 Feb 1996 – 13 Feb 2077 · every day, one row per year</p>
+
+<div class="stats">
+  <div class="card"><div class="lab">Days lived</div><div class="big" id="dl">–</div><div class="small" id="pct"></div></div>
+  <div class="card"><div class="lab">Days left</div><div class="big" id="dr">–</div><div class="small">to 13 Feb 2077</div></div>
+</div>
+<div class="bar"><div id="barfill"></div></div>
+<p class="clock" id="clock"></p>
+
+<div id="tap">Tap the grid to inspect a day</div>
+<canvas id="grid"></canvas>
+<div class="lg">
+  <span><span class="sw" style="background:#888780"></span>Lived</span>
+  <span><span class="sw" style="background:#1D9E75"></span>Anniversary</span>
+  <span><span class="sw" style="background:#7F77DD"></span>Girls turn 18</span>
+  <span><span class="sw" style="background:#BA7517"></span>Strength</span>
+  <span><span class="sw" style="background:#D85A30"></span>Fixed event</span>
+  <span><span class="sw" style="background:var(--fg)"></span>Today</span>
+</div>
+
+<h2>Projected total</h2>
+<canvas id="chart"></canvas>
+<p class="note">Rough estimate, not a prediction. Keep training: ~600kg peak around 40, slow decline to 60, faster after. Dashed: if training stopped at 30.</p>
+
+<h2>Strength milestones</h2>
+<div id="str"></div>
+
+<h2>Life milestones</h2>
+<div id="life"></div>
+</main>
+
+<script>
+const D=864e5,U=(y,m,d)=>Date.UTC(y,m,d),YEAR=365.2425*D;
+const BIRTH=U(1996,1,14),END=U(2077,1,13);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const todayUTC=()=>{const t=new Date();return U(t.getFullYear(),t.getMonth(),t.getDate());};
+const dayNum=ms=>Math.round((ms-BIRTH)/D)+1;
+const TOTAL=dayNum(END);
+const fmt=ms=>new Date(ms).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+const rowStart=a=>U(1996+a,1,14);
+const ageAt=ms=>{let a=Math.floor((ms-BIRTH)/YEAR);if(rowStart(a)>ms)a--;if(rowStart(a+1)<=ms)a++;return a+(ms-rowStart(a))/(rowStart(a+1)-rowStart(a));};
+const msAt=a=>{const f=Math.floor(a),s=rowStart(f);return s+Math.round((a-f)*(rowStart(f+1)-s)/D)*D;};
+
+// Strength model (kg total by age)
+function trained(a){
+  if(a<30)return null;
+  if(a<=40)return 500+100*Math.sin(Math.PI/2*(a-30)/10);
+  let v=600;
+  for(const[s,e,r]of[[40,50,.995],[50,60,.99],[60,70,.9825],[70,81,.975]]){
+    if(a<=e)return v*Math.pow(r,a-s); v*=Math.pow(r,e-s);
+  }
+  return v;
+}
+function stopped(a){
+  if(a<30)return null;
+  let v=500;
+  for(const[s,e,r]of[[30,40,.995],[40,60,.9875],[60,81,.975]]){
+    if(a<=e)return v*Math.pow(r,a-s); v*=Math.pow(r,e-s);
+  }
+  return v;
+}
+function crossBelow(k){let lo=40,hi=81;for(let i=0;i<60;i++){const m=(lo+hi)/2;trained(m)>k?lo=m:hi=m;}return lo;}
+
+let TODAY=todayUTC();
+
+function strengthEvents(){
+  return [
+    [msAt(30),'Sarcopenia process begins (3–5% muscle per decade if untrained)'],
+    [TODAY,'500kg total, now'],
+    [msAt(40),'600kg, projected peak'],
+    [msAt(60),'Decline speeds up for everyone'],
+    [msAt(crossBelow(500)),'Back below 500kg'],
+    [msAt(65),'Sarcopenia becomes common in the general population'],
+    [msAt(crossBelow(400)),'Below 400kg'],
+    [END,'300kg never reached: ~'+Math.round(trained(80.99))+'kg on the final day']
+  ].sort((a,b)=>a[0]-b[0]);
+}
+function lifeEvents(){
+  const half=BIRTH+(Math.ceil(TOTAL/2)-1)*D;
+  const ev=[[U(2026,9,10),'#1D9E75','Wedding day']];
+  const names={10:'10th anniversary',25:'Silver anniversary (25th)',40:'Ruby anniversary (40th)',50:'Golden anniversary (50th)'};
+  for(let y=2027;y<=2076;y++)ev.push([U(y,9,10),'#1D9E75',names[y-2026]||null]);
+  ev.push(
+    [U(2038,3,4),'#7F77DD','MJ turns 18'],
+    [U(2044,0,6),'#7F77DD','Flo turns 18'],
+    [U(2036,1,14),'#D85A30','40th birthday'],
+    [half,'#D85A30','Halfway day'],
+    [U(2053,1,14),'#D85A30','57: private pension access'],
+    [U(2064,1,14),'#D85A30','68: state pension (current law)'],
+    [END,'#D85A30','Final day']
+  );
+  return ev;
+}
+
+// Grid
+const G=document.getElementById('grid'),L=24,RH=7,W=366,H=81*RH+2;
+function rowOf(ms){return Math.floor(ageAt(ms));}
+function drawGrid(){
+  const dpr=window.devicePixelRatio||1;
+  G.width=(L+W)*dpr;G.height=H*dpr;G.style.aspectRatio=(L+W)+'/'+H;
+  const x=G.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,L+W,H);
+  for(let a=0;a<81;a++){
+    const s=rowStart(a),len=Math.round((rowStart(a+1)-s)/D),y=1+a*RH;
+    const lived=Math.max(0,Math.min(len,Math.round((TODAY-s)/D)+1));
+    x.fillStyle=css('--future');x.fillRect(L,y,len,RH-1);
+    x.fillStyle=css('--lived');x.fillRect(L,y,lived,RH-1);
+    if(a%10===0){x.fillStyle=css('--fg3');x.font='11px system-ui,sans-serif';x.textBaseline='middle';x.fillText(a,0,y+3);}
+  }
+  const mark=(ms,c)=>{const r=rowOf(ms),col=Math.round((ms-rowStart(r))/D);x.fillStyle=c;x.fillRect(L+col-1,r*RH,2,RH+1);};
+  lifeEvents().forEach(e=>mark(e[0],e[1]));
+  strengthEvents().forEach(e=>{if(e[0]!==TODAY&&e[0]!==END)mark(e[0],'#BA7517');});
+  mark(TODAY,css('--fg'));
+}
+G.addEventListener('click',ev=>{
+  const b=G.getBoundingClientRect(),sx=(ev.clientX-b.left)*(L+W)/b.width,sy=(ev.clientY-b.top)*H/b.height;
+  const r=Math.floor((sy-1)/RH),c=Math.floor(sx-L);if(r<0||r>80||c<0)return;
+  const len=Math.round((rowStart(r+1)-rowStart(r))/D);if(c>=len)return;
+  const ms=rowStart(r)+c*D,n=dayNum(ms),tv=trained(ageAt(ms));
+  let s='Day '+n.toLocaleString()+' · '+fmt(ms)+' · age '+r;
+  if(ms<TODAY)s+=' · lived';else if(ms===TODAY)s+=' · today';
+  else s+=' · in '+(n-dayNum(TODAY)).toLocaleString()+' days'+(tv?' · ~'+Math.round(tv)+'kg':'');
+  document.getElementById('tap').textContent=s;
+});
+
+// Chart
+function drawChart(){
+  const C=document.getElementById('chart'),dpr=window.devicePixelRatio||1,w=C.clientWidth||340,h=200;
+  C.width=w*dpr;C.height=h*dpr;C.style.height=h+'px';
+  const x=C.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);
+  const pl=34,pr=8,pt=8,pb=22,X=a=>pl+(a-30)/(81-30)*(w-pl-pr),Y=v=>pt+(1-(v-200)/(650-200))*(h-pt-pb);
+  x.font='11px system-ui,sans-serif';x.fillStyle=css('--fg3');x.strokeStyle=css('--line');x.lineWidth=1;
+  for(let v=200;v<=600;v+=100){x.beginPath();x.moveTo(pl,Y(v));x.lineTo(w-pr,Y(v));x.stroke();x.textAlign='right';x.textBaseline='middle';x.fillText(v,pl-4,Y(v));}
+  x.textAlign='center';x.textBaseline='top';for(let a=30;a<=80;a+=10)x.fillText(a,X(a),h-pb+6);
+  const line=(f,col,dash)=>{x.beginPath();x.setLineDash(dash);x.strokeStyle=col;x.lineWidth=2;for(let a=30;a<=81;a+=.25){const v=f(a);a===30?x.moveTo(X(a),Y(v)):x.lineTo(X(a),Y(v));}x.stroke();x.setLineDash([]);};
+  line(stopped,css('--fg3'),[4,4]);line(trained,'#BA7517',[]);
+  const a=ageAt(TODAY);if(a>=30){x.fillStyle=css('--fg');x.beginPath();x.arc(X(a),Y(trained(a)),3.5,0,7);x.fill();}
+}
+
+// Lists
+function list(id,items,colour){
+  const el=document.getElementById(id);el.innerHTML='';
+  items.forEach(e=>{
+    const r=document.createElement('div');r.className='row'+(e[0]<TODAY?' past':'');
+    const c=colour||e[1]||css('--fg');
+    r.innerHTML='<span class="dn" style="color:'+c+'">'+dayNum(e[0]).toLocaleString()+'</span><span class="dt">'+fmt(e[0])+'</span><span>'+e[e.length-1]+'</span>';
+    el.appendChild(r);
+  });
+}
+
+function stats(){
+  const lived=dayNum(TODAY),left=TOTAL-lived;
+  document.getElementById('dl').textContent=lived.toLocaleString();
+  document.getElementById('dr').textContent=left.toLocaleString();
+  document.getElementById('pct').textContent=(Math.round(lived/TOTAL*1000)/10)+'% of '+TOTAL.toLocaleString();
+  document.getElementById('barfill').style.width=(lived/TOTAL*100)+'%';
+}
+function tick(){
+  const s=Math.max(0,Math.floor((END+D-Date.now())/1000));
+  const d=Math.floor(s/86400),hh=Math.floor(s%86400/3600),mm=Math.floor(s%3600/60),ss=s%60;
+  document.getElementById('clock').textContent=d.toLocaleString()+'d '+String(hh).padStart(2,'0')+'h '+String(mm).padStart(2,'0')+'m '+String(ss).padStart(2,'0')+'s left on the clock';
+  if(todayUTC()!==TODAY){TODAY=todayUTC();render();}
+}
+function render(){
+  stats();drawGrid();drawChart();
+  list('str',strengthEvents(),'#BA7517');
+  list('life',lifeEvents().filter(e=>e[2]).concat([[TODAY,null,'Today']]).sort((a,b)=>a[0]-b[0]));
+}
+render();tick();setInterval(tick,1000);
+addEventListener('resize',()=>{drawGrid();drawChart();});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
